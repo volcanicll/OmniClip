@@ -63,53 +63,83 @@ class handler(BaseHTTPRequestHandler):
             return 'unknown'
 
     def get_standard_info(self, url):
-        """Get video info for Twitter/TikTok using standard format"""
+        """Get video info for Twitter/TikTok/Douyin using standard format"""
+        platform = self.detect_platform(url)
+        
+        # Base configuration
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
             'socket_timeout': 8,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+                'Accept-Encoding': 'gzip, deflate, br',
+            },
         }
         
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            
-            # Get direct URL
-            direct_url = info.get('url')
-            
-            # If formats available, try to get best quality
-            if 'formats' in info and info['formats']:
-                # Find best mp4 format
-                mp4_formats = [f for f in info['formats'] if f.get('ext') == 'mp4']
-                if mp4_formats:
-                    # Sort by quality
-                    best_format = max(mp4_formats, key=lambda f: f.get('height', 0) or 0)
-                    direct_url = best_format.get('url', direct_url)
-            
-            return {
-                'success': True,
-                'platform': self.detect_platform(url),
-                'title': info.get('title', 'Unknown'),
-                'thumbnail': info.get('thumbnail', ''),
-                'duration': info.get('duration', 0),
-                'filesize': info.get('filesize') or info.get('filesize_approx', 0),
-                'format': info.get('ext', 'mp4'),
-                'download_type': 'single',
-                'download_url': direct_url,
-                'width': info.get('width', 0),
-                'height': info.get('height', 0),
-            }
+        # Platform-specific configuration
+        if platform == 'tiktok':
+            ydl_opts['http_headers']['Referer'] = 'https://www.douyin.com/'
+            # Try without cookies first, fallback if needed
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+            except Exception as e:
+                error_msg = str(e)
+                if 'cookie' in error_msg.lower():
+                    # Return helpful error for cookie requirement
+                    raise Exception('Douyin/TikTok requires cookies for some videos. Please try a different public video or use the mobile share link.')
+                raise
+        else:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+        
+        # Get direct URL
+        direct_url = info.get('url')
+        
+        # If formats available, try to get best quality
+        if 'formats' in info and info['formats']:
+            # Find best mp4 format
+            mp4_formats = [f for f in info['formats'] if f.get('ext') == 'mp4']
+            if mp4_formats:
+                # Sort by quality
+                best_format = max(mp4_formats, key=lambda f: f.get('height', 0) or 0)
+                direct_url = best_format.get('url', direct_url)
+        
+        return {
+            'success': True,
+            'platform': platform,
+            'title': info.get('title', 'Unknown'),
+            'thumbnail': info.get('thumbnail', ''),
+            'duration': info.get('duration', 0),
+            'filesize': info.get('filesize') or info.get('filesize_approx', 0),
+            'format': info.get('ext', 'mp4'),
+            'download_type': 'single',
+            'download_url': direct_url,
+            'width': info.get('width', 0),
+            'height': info.get('height', 0),
+        }
 
     def get_bilibili_info(self, url):
         """Get video info for Bilibili with special handling"""
-        # First try to get single mp4 with audio
+        # Configuration with anti-bot headers
         ydl_opts = {
             'format': 'best[ext=mp4][acodec!=none]/best[ext=mp4]',
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
             'socket_timeout': 8,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://www.bilibili.com/',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+            },
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

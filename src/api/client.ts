@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { VideoInfo, DownloadRequest } from '../types';
+import type { VideoInfo } from '../types';
 
 const api = axios.create({
     baseURL: '/api',

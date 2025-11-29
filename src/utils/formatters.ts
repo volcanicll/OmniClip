@@ -29,8 +29,10 @@ export function formatFileSize(bytes: number): string {
 export function getPlatformName(platform: string): string {
     const platformNames: Record<string, string> = {
         twitter: 'X (Twitter)',
-        tiktok: '抖音 (TikTok)',
+        tiktok: 'TikTok',
+        douyin: '抖音 (Douyin)',
         bilibili: '哔哩哔哩 (Bilibili)',
+        youtube: 'YouTube',
         unknown: '未知平台',
     };
     return platformNames[platform] || platform;

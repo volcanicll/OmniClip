@@ -44,7 +44,7 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
                             setUrl(e.target.value);
                             setUrlError('');
                         }}
-                        placeholder="粘贴 X (Twitter)、抖音 (TikTok) 或 B站 (Bilibili) 视频链接..."
+                        placeholder="粘贴 X、抖音、B站 或 YouTube 视频链接..."
                         className={`form-input ${urlError ? 'error' : ''}`}
                         disabled={loading}
                     />
@@ -78,8 +78,10 @@ export function DownloadForm({ onSubmit, loading }: DownloadFormProps) {
                 <p className="platforms-title">支持的平台：</p>
                 <div className="platforms-list">
                     <span className="platform-badge">X (Twitter)</span>
-                    <span className="platform-badge">抖音 (TikTok)</span>
+                    <span className="platform-badge">抖音 (Douyin)</span>
+                    <span className="platform-badge">TikTok</span>
                     <span className="platform-badge">哔哩哔哩 (Bilibili)</span>
+                    <span className="platform-badge">YouTube</span>
                 </div>
             </div>
         </form>

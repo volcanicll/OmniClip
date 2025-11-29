@@ -57,46 +57,71 @@ class handler(BaseHTTPRequestHandler):
             return 'bilibili'
         elif 'twitter.com' in url_lower or 'x.com' in url_lower:
             return 'twitter'
-        elif 'douyin.com' in url_lower or 'tiktok.com' in url_lower:
+        elif 'douyin.com' in url_lower:
+            return 'douyin'
+        elif 'tiktok.com' in url_lower:
             return 'tiktok'
+        elif 'youtube.com' in url_lower or 'youtu.be' in url_lower:
+            return 'youtube'
         else:
             return 'unknown'
 
     def get_standard_info(self, url):
-        """Get video info for Twitter/TikTok/Douyin using standard format"""
+        """Get video info for Twitter/TikTok/Douyin/YouTube using standard format"""
         platform = self.detect_platform(url)
         
-        # Base configuration
+        # Base configuration with aggressive anti-bot settings
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
             'socket_timeout': 8,
+            'geo_bypass': True,
+            'nocheckcertificate': True,
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
                 'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
             },
         }
         
         # Platform-specific configuration
-        if platform == 'tiktok':
+        if platform == 'douyin':
             ydl_opts['http_headers']['Referer'] = 'https://www.douyin.com/'
-            # Try without cookies first, fallback if needed
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
-            except Exception as e:
-                error_msg = str(e)
-                if 'cookie' in error_msg.lower():
-                    # Return helpful error for cookie requirement
-                    raise Exception('Douyin/TikTok requires cookies for some videos. Please try a different public video or use the mobile share link.')
-                raise
-        else:
+            ydl_opts['extractor_args'] = {
+                'tiktok': {
+                    'api_hostname': 'api22-normal-c-useast2a.tiktokv.com'
+                }
+            }
+        elif platform == 'tiktok':
+            ydl_opts['http_headers']['Referer'] = 'https://www.tiktok.com/'
+        elif platform == 'youtube':
+            # YouTube-specific settings
+            ydl_opts['format'] = 'best[ext=mp4][height<=1080]/best[ext=mp4]/best'
+            ydl_opts['http_headers']['Referer'] = 'https://www.youtube.com/'
+        elif platform == 'twitter':
+            ydl_opts['http_headers']['Referer'] = 'https://twitter.com/'
+        
+        try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
+        except Exception as e:
+            error_msg = str(e)
+            # Provide helpful error messages
+            if 'cookie' in error_msg.lower():
+                if platform == 'douyin':
+                    raise Exception('抖音视频需要登录。请尝试：1) 使用公开视频 2) 使用移动端分享链接')
+                else:
+                    raise Exception(f'{platform.title()} requires authentication. Please try a public video.')
+            elif '412' in error_msg or 'Precondition Failed' in error_msg:
+                raise Exception(f'Platform anti-bot protection detected. This video may be restricted or require special access.')
+            else:
+                raise
         
         # Get direct URL
         direct_url = info.get('url')
@@ -126,20 +151,33 @@ class handler(BaseHTTPRequestHandler):
 
     def get_bilibili_info(self, url):
         """Get video info for Bilibili with special handling"""
-        # Configuration with anti-bot headers
+        # Configuration with aggressive anti-bot headers
         ydl_opts = {
             'format': 'best[ext=mp4][acodec!=none]/best[ext=mp4]',
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
             'socket_timeout': 8,
+            'geo_bypass': True,
+            'nocheckcertificate': True,
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Referer': 'https://www.bilibili.com/',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Origin': 'https://www.bilibili.com',
+                'Accept': 'application/json, text/plain, */*',
                 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
                 'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Sec-Fetch-Dest': 'empty',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-site',
             },
+            'extractor_args': {
+                'bilibili': {
+                    'skip': ['dash', 'durl']
+                }
+            }
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

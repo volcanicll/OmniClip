@@ -102,7 +102,7 @@ class handler(BaseHTTPRequestHandler):
             'geo_bypass': True,
             'nocheckcertificate': True,
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.9',
                 'DNT': '1',
@@ -121,7 +121,7 @@ class handler(BaseHTTPRequestHandler):
             ydl_opts.update({
                 'format': 'bestvideo+bestaudio/best',  # Allow separate streams
                 'http_headers': {
-                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                     'Referer': 'https://www.bilibili.com/',
                 },
             })
@@ -129,7 +129,7 @@ class handler(BaseHTTPRequestHandler):
         elif platform == 'douyin':
             ydl_opts.update({
                 'http_headers': {
-                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36', # Mobile UA often works better
+                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36', # Mobile UA often works better
                     'Referer': 'https://www.douyin.com/',
                 }
             })

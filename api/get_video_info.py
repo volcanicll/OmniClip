@@ -1,9 +1,9 @@
 from http.server import BaseHTTPRequestHandler
 import json
 import yt_dlp
-from urllib.parse import parse_qs
+import os
+import tempfile
 import traceback
-
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -31,11 +31,8 @@ class handler(BaseHTTPRequestHandler):
             # Detect platform
             platform = self.detect_platform(url)
             
-            # Get video info based on platform
-            if platform == 'bilibili':
-                result = self.get_bilibili_info(url)
-            else:
-                result = self.get_standard_info(url)
+            # Get video info
+            result = self.get_video_info(url, platform)
             
             # Send success response
             self.send_response(200)
@@ -57,7 +54,7 @@ class handler(BaseHTTPRequestHandler):
             return 'bilibili'
         elif 'twitter.com' in url_lower or 'x.com' in url_lower:
             return 'twitter'
-        elif 'douyin.com' in url_lower:
+        elif 'douyin.com' in url_lower or 'iesdouyin.com' in url_lower:
             return 'douyin'
         elif 'tiktok.com' in url_lower:
             return 'tiktok'
@@ -66,131 +63,133 @@ class handler(BaseHTTPRequestHandler):
         else:
             return 'unknown'
 
-    def get_standard_info(self, url):
-        """Get video info for Twitter/TikTok/Douyin/YouTube using standard format"""
-        platform = self.detect_platform(url)
+    def _get_cookies_path(self, platform):
+        """Get path to temporary cookie file if env var exists"""
+        env_var_map = {
+            'bilibili': 'COOKIES_BILIBILI',
+            'douyin': 'COOKIES_DOUYIN',
+            'youtube': 'COOKIES_YOUTUBE'
+        }
         
-        # Base configuration with aggressive anti-bot settings
+        env_var = env_var_map.get(platform)
+        if not env_var:
+            return None
+            
+        cookies_content = os.environ.get(env_var)
+        if not cookies_content:
+            return None
+            
+        # Create temp file
+        try:
+            fd, path = tempfile.mkstemp(suffix='.txt', text=True)
+            with os.fdopen(fd, 'w') as f:
+                f.write(cookies_content)
+            return path
+        except Exception as e:
+            print(f"Failed to create cookie file: {e}")
+            return None
+
+    def get_video_info(self, url, platform):
+        """Get video info using yt-dlp with optimized settings"""
+        
+        # Base configuration
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
-            'socket_timeout': 8,
+            'socket_timeout': 10,
             'geo_bypass': True,
             'nocheckcertificate': True,
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
-                'Accept-Encoding': 'gzip, deflate, br',
+                'Accept-Language': 'en-US,en;q=0.9',
                 'DNT': '1',
                 'Connection': 'keep-alive',
                 'Upgrade-Insecure-Requests': '1',
             },
         }
+
+        # Cookie handling
+        cookie_path = self._get_cookies_path(platform)
+        if cookie_path:
+            ydl_opts['cookiefile'] = cookie_path
+
+        # Platform specific optimizations
+        if platform == 'bilibili':
+            ydl_opts.update({
+                'format': 'bestvideo+bestaudio/best',  # Allow separate streams
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Referer': 'https://www.bilibili.com/',
+                },
+            })
         
-        # Platform-specific configuration
-        if platform == 'douyin':
-            ydl_opts['http_headers']['Referer'] = 'https://www.douyin.com/'
-            ydl_opts['extractor_args'] = {
-                'tiktok': {
-                    'api_hostname': 'api22-normal-c-useast2a.tiktokv.com'
+        elif platform == 'douyin':
+            ydl_opts.update({
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36', # Mobile UA often works better
+                    'Referer': 'https://www.douyin.com/',
                 }
-            }
-        elif platform == 'tiktok':
-            ydl_opts['http_headers']['Referer'] = 'https://www.tiktok.com/'
+            })
+            
         elif platform == 'youtube':
-            # YouTube-specific settings
-            ydl_opts['format'] = 'best[ext=mp4][height<=1080]/best[ext=mp4]/best'
-            ydl_opts['http_headers']['Referer'] = 'https://www.youtube.com/'
-        elif platform == 'twitter':
-            ydl_opts['http_headers']['Referer'] = 'https://twitter.com/'
-        
+            ydl_opts.update({
+                'format': 'best[ext=mp4][height<=1080]/best[ext=mp4]/best',
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android', 'ios', 'web'], # Rotate clients
+                        'skip': ['dash', 'hls'],
+                    }
+                }
+            })
+
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
-        except Exception as e:
-            error_msg = str(e)
-            # Provide helpful error messages
-            if 'cookie' in error_msg.lower():
-                if platform == 'douyin':
-                    raise Exception('抖音视频需要登录。请尝试：1) 使用公开视频 2) 使用移动端分享链接')
-                else:
-                    raise Exception(f'{platform.title()} requires authentication. Please try a public video.')
-            elif '412' in error_msg or 'Precondition Failed' in error_msg:
-                raise Exception(f'Platform anti-bot protection detected. This video may be restricted or require special access.')
-            else:
-                raise
-        
-        # Get direct URL
-        direct_url = info.get('url')
-        
-        # If formats available, try to get best quality
-        if 'formats' in info and info['formats']:
-            # Find best mp4 format
-            mp4_formats = [f for f in info['formats'] if f.get('ext') == 'mp4']
-            if mp4_formats:
-                # Sort by quality
-                best_format = max(mp4_formats, key=lambda f: f.get('height', 0) or 0)
-                direct_url = best_format.get('url', direct_url)
-        
-        return {
-            'success': True,
-            'platform': platform,
-            'title': info.get('title', 'Unknown'),
-            'thumbnail': info.get('thumbnail', ''),
-            'duration': info.get('duration', 0),
-            'filesize': info.get('filesize') or info.get('filesize_approx', 0),
-            'format': info.get('ext', 'mp4'),
-            'download_type': 'single',
-            'download_url': direct_url,
-            'width': info.get('width', 0),
-            'height': info.get('height', 0),
-        }
+                
+            # Clean up cookie file
+            if cookie_path and os.path.exists(cookie_path):
+                try:
+                    os.remove(cookie_path)
+                except:
+                    pass
 
-    def get_bilibili_info(self, url):
-        """Get video info for Bilibili with special handling"""
-        # Configuration with aggressive anti-bot headers
-        ydl_opts = {
-            'format': 'best[ext=mp4][acodec!=none]/best[ext=mp4]',
-            'quiet': True,
-            'no_warnings': True,
-            'extract_flat': False,
-            'socket_timeout': 8,
-            'geo_bypass': True,
-            'nocheckcertificate': True,
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://www.bilibili.com/',
-                'Origin': 'https://www.bilibili.com',
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Sec-Fetch-Dest': 'empty',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Site': 'same-site',
-            },
-            'extractor_args': {
-                'bilibili': {
-                    'skip': ['dash', 'durl']
-                }
-            }
-        }
+            # Process results
+            return self._process_info(info, platform)
+
+        except Exception as e:
+            # Clean up cookie file in case of error
+            if cookie_path and os.path.exists(cookie_path):
+                try:
+                    os.remove(cookie_path)
+                except:
+                    pass
+            
+            error_msg = str(e)
+            if 'Sign in to confirm your age' in error_msg:
+                raise Exception('Video is age-restricted and requires login.')
+            elif 'Video unavailable' in error_msg:
+                raise Exception('Video is unavailable or deleted.')
+            else:
+                raise Exception(f'Download failed: {error_msg}')
+
+    def _process_info(self, info, platform):
+        """Process yt-dlp info dict into standard response"""
         
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            
-            title = info.get('title', 'Unknown')
-            thumbnail = info.get('thumbnail', '')
-            duration = info.get('duration', 0)
-            
-            # Check if we have a single file with audio
+        # Basic info
+        title = info.get('title', 'Unknown')
+        thumbnail = info.get('thumbnail', '')
+        duration = info.get('duration', 0)
+        width = info.get('width', 0)
+        height = info.get('height', 0)
+        
+        # Handle Bilibili separate streams
+        if platform == 'bilibili':
             formats = info.get('formats', [])
             
-            # Try to find a single mp4 with both video and audio
+            # Check for single file with audio
             single_mp4 = None
             for fmt in formats:
                 if (fmt.get('ext') == 'mp4' and 
@@ -199,40 +198,23 @@ class handler(BaseHTTPRequestHandler):
                     single_mp4 = fmt
                     break
             
-            if single_mp4:
-                # Found single mp4 with audio
-                return {
-                    'success': True,
-                    'platform': 'bilibili',
-                    'title': title,
-                    'thumbnail': thumbnail,
-                    'duration': duration,
-                    'filesize': single_mp4.get('filesize') or single_mp4.get('filesize_approx', 0),
-                    'format': 'mp4',
-                    'download_type': 'single',
-                    'download_url': single_mp4.get('url'),
-                    'width': single_mp4.get('width', 0),
-                    'height': single_mp4.get('height', 0),
-                }
-            else:
-                # Need separate video and audio streams
+            if not single_mp4:
+                # Fallback to separate streams
                 video_format = None
                 audio_format = None
                 
-                # Find best video stream
-                video_formats = [f for f in formats if f.get('vcodec') != 'none' and f.get('acodec') == 'none']
-                if video_formats:
-                    video_format = max(video_formats, key=lambda f: f.get('height', 0) or 0)
-                
-                # Find best audio stream
-                audio_formats = [f for f in formats if f.get('acodec') != 'none' and f.get('vcodec') == 'none']
-                if audio_formats:
-                    audio_format = max(audio_formats, key=lambda f: f.get('abr', 0) or 0)
+                v_formats = [f for f in formats if f.get('vcodec') != 'none' and f.get('acodec') == 'none']
+                if v_formats:
+                    video_format = max(v_formats, key=lambda f: f.get('height', 0) or 0)
+                    
+                a_formats = [f for f in formats if f.get('acodec') != 'none' and f.get('vcodec') == 'none']
+                if a_formats:
+                    audio_format = max(a_formats, key=lambda f: f.get('abr', 0) or 0)
                 
                 if video_format and audio_format:
                     return {
                         'success': True,
-                        'platform': 'bilibili',
+                        'platform': platform,
                         'title': title,
                         'thumbnail': thumbnail,
                         'duration': duration,
@@ -243,23 +225,34 @@ class handler(BaseHTTPRequestHandler):
                         'audio_url': audio_format.get('url'),
                         'width': video_format.get('width', 0),
                         'height': video_format.get('height', 0),
-                        'note': 'Video and audio are separate streams. Download both and merge using FFmpeg or a video editor.'
+                        'note': 'Video and audio are separate streams.'
                     }
-                else:
-                    # Fallback to best available
-                    return {
-                        'success': True,
-                        'platform': 'bilibili',
-                        'title': title,
-                        'thumbnail': thumbnail,
-                        'duration': duration,
-                        'filesize': info.get('filesize') or info.get('filesize_approx', 0),
-                        'format': info.get('ext', 'mp4'),
-                        'download_type': 'single',
-                        'download_url': info.get('url'),
-                        'width': info.get('width', 0),
-                        'height': info.get('height', 0),
-                    }
+
+        # Standard processing for single file
+        direct_url = info.get('url')
+        
+        # Try to find best mp4 if original url is not optimal
+        if 'formats' in info:
+            mp4_formats = [f for f in info['formats'] if f.get('ext') == 'mp4']
+            if mp4_formats:
+                best_format = max(mp4_formats, key=lambda f: f.get('height', 0) or 0)
+                direct_url = best_format.get('url', direct_url)
+                width = best_format.get('width', width)
+                height = best_format.get('height', height)
+
+        return {
+            'success': True,
+            'platform': platform,
+            'title': title,
+            'thumbnail': thumbnail,
+            'duration': duration,
+            'filesize': info.get('filesize') or info.get('filesize_approx', 0),
+            'format': info.get('ext', 'mp4'),
+            'download_type': 'single',
+            'download_url': direct_url,
+            'width': width,
+            'height': height,
+        }
 
     def send_error_response(self, code, message):
         """Send error response"""

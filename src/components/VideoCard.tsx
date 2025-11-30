@@ -1,5 +1,6 @@
 import type { VideoInfo } from '../types';
 import { formatDuration, formatFileSize, getPlatformName } from '../utils/formatters';
+import { getProxyUrl } from '../utils/proxy';
 
 interface VideoCardProps {
     videoInfo: VideoInfo;
@@ -7,6 +8,16 @@ interface VideoCardProps {
 }
 
 export function VideoCard({ videoInfo, onReset }: VideoCardProps) {
+    const platform = videoInfo.platform || 'unknown';
+
+    // Helper to get download URL (proxy or direct)
+    const getDownloadLink = (url: string, filename: string) => {
+        // Use proxy for Bilibili and Douyin/TikTok to bypass Referer checks
+        if (['bilibili', 'douyin', 'tiktok'].includes(platform)) {
+            return getProxyUrl(url, platform, filename);
+        }
+        return url;
+    };
 
     return (
         <div className="video-card">
@@ -27,7 +38,7 @@ export function VideoCard({ videoInfo, onReset }: VideoCardProps) {
                 <div className="video-header">
                     <h2 className="video-title">{videoInfo.title}</h2>
                     <span className="platform-tag">
-                        {getPlatformName(videoInfo.platform || 'unknown')}
+                        {getPlatformName(platform)}
                     </span>
                 </div>
 
@@ -62,7 +73,7 @@ export function VideoCard({ videoInfo, onReset }: VideoCardProps) {
                 <div className="download-actions">
                     {videoInfo.download_type === 'single' && videoInfo.download_url && (
                         <a
-                            href={videoInfo.download_url}
+                            href={getDownloadLink(videoInfo.download_url, `${videoInfo.title}.${videoInfo.format || 'mp4'}`)}
                             download={`${videoInfo.title}.${videoInfo.format || 'mp4'}`}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -88,7 +99,7 @@ export function VideoCard({ videoInfo, onReset }: VideoCardProps) {
                             <div className="separate-downloads">
                                 {videoInfo.video_url && (
                                     <a
-                                        href={videoInfo.video_url}
+                                        href={getDownloadLink(videoInfo.video_url, `${videoInfo.title}_video.mp4`)}
                                         download={`${videoInfo.title}_video.mp4`}
                                         target="_blank"
                                         rel="noopener noreferrer"
@@ -102,7 +113,7 @@ export function VideoCard({ videoInfo, onReset }: VideoCardProps) {
                                 )}
                                 {videoInfo.audio_url && (
                                     <a
-                                        href={videoInfo.audio_url}
+                                        href={getDownloadLink(videoInfo.audio_url, `${videoInfo.title}_audio.m4a`)}
                                         download={`${videoInfo.title}_audio.m4a`}
                                         target="_blank"
                                         rel="noopener noreferrer"

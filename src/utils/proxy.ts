@@ -22,8 +22,10 @@ export function getProxyUrl(url: string, platform: string, filename?: string): s
     let referer = '';
     if (platform === 'bilibili') {
         referer = 'https://www.bilibili.com/';
-    } else if (platform === 'douyin' || platform === 'tiktok') {
+    } else if (platform === 'douyin') {
         referer = 'https://www.douyin.com/';
+    } else if (platform === 'tiktok') {
+        referer = 'https://www.tiktok.com/';
     } else if (platform === 'twitter') {
         referer = 'https://twitter.com/';
     }
